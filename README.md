@@ -1,6 +1,8 @@
 # MyMembers
 
-An implementation of the [SWIM protocol](https://www.cs.cornell.edu/projects/Quicksilver/public_pdfs/SWIM.pdf) in Go. This is a learning project and is not designed for production use.
+An implementation of the [SWIM protocol](https://www.cs.cornell.edu/projects/Quicksilver/public_pdfs/SWIM.pdf) in Go. 
+
+> **Note:** This is a learning project and is not designed for production use.
 
 
 ## Architecture
