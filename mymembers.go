@@ -125,6 +125,8 @@ func (m *MyMembers) Shutdown() error {
 
 // packetListen it reads packets from the transport and dispatches them to correct handler
 func (m *MyMembers) packetListen() {
+	m.logger.Println("[DEBUG] packetListen: started packetListener")
+
 	for {
 		select {
 		case pkt := <-m.transport.PacketCh():
@@ -166,15 +168,30 @@ func (m *MyMembers) packetListen() {
 	}
 }
 
+func (m *MyMembers) streamListen() {
+	m.logger.Println("[DEBUG] streamListen: started streamListener")
+
+	for {
+		select {
+		case conn := <-m.transport.StreamCh():
+			go m.handleStream(conn)
+		case <-m.shutdownCh:
+			return
+		}
+	}
+}
+
 // schedule runs SWIM based periodic background tasks
 func (m *MyMembers) schedule() {
+	m.logger.Println("[DEBUG] schedule: scheduler started")
+
 	probTicker := time.NewTicker(m.config.ProbeInterval)
 	gossipTicker := time.NewTicker(m.config.GossipInterval)
 	pushPullTicker := time.NewTicker(m.config.PushPullInterval)
 	defer probTicker.Stop()
 	defer gossipTicker.Stop()
 	defer pushPullTicker.Stop()
-	
+
 	for {
 		select {
 		case <-probTicker.C:
@@ -756,17 +773,6 @@ func (m *MyMembers) refute(me *nodeState, accusedInc uint32) {
 	m.broadcasts.QueueBroadcast(m.config.Name, encoded)
 }
 
-func (m *MyMembers) streamListen() {
-	for {
-		select {
-		case conn := <-m.transport.StreamCh():
-			go m.handleStream(conn)
-		case <-m.shutdownCh:
-			return
-		}
-	}
-}
-
 func (m *MyMembers) handleStream(conn net.Conn) {
 	conn.SetDeadline(time.Now().Add(m.config.TCPTimeout))
 	defer conn.Close()
@@ -911,7 +917,7 @@ func (m *MyMembers) syncRemoteState(remote []pushNodeState) {
 	}
 }
 
-func (m *MyMembers) pushPullNode(addr string) interface{} {
+func (m *MyMembers) pushPullNode(addr string) error {
 	conn, err := m.transport.DialTimeout(addr, m.config.TCPTimeout)
 	if err != nil {
 		return fmt.Errorf("dial %s: %w", addr, err)
