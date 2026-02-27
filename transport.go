@@ -34,14 +34,14 @@ func NewNetTransport(bindAddr string, bindPort int, logger *log.Logger) (*NetTra
 
 	udpAddr, err := net.ResolveUDPAddr("udp", fmt.Sprintf("%s:%d", bindAddr, bindPort))
 	if err != nil {
-		logger.Printf("[ERR] transport: couldn't resolve the udp address: %w", err)
+		logger.Printf("[ERR] transport: couldn't resolve the udp address: %v", err)
 		return nil, err
 	}
 
 	// create udp socket
 	udpConn, err := net.ListenUDP("udp", udpAddr)
 	if err != nil {
-		logger.Printf("[ERR] transport: couldn't create udp connection: %w", err)
+		logger.Printf("[ERR] transport: couldn't create udp connection: %v", err)
 		return nil, err
 	}
 
@@ -131,13 +131,13 @@ func (t *NetTransport) WriteTo(data []byte, addr string) (time.Time, error) {
 
 	udpAddr, err := net.ResolveUDPAddr("udp", addr)
 	if err != nil {
-		fmt.Printf("[ERR] transport: couldn't resolve the udp address: %w", err)
+		fmt.Printf("[ERR] transport: couldn't resolve the udp address: %v", err)
 		return time.Now(), err
 	}
 
 	_, err = t.conn.WriteTo(data, udpAddr)
 	if err != nil {
-		fmt.Printf("[ERR] transport: couldn't send data: %w", err)
+		fmt.Printf("[ERR] transport: couldn't send data: %v", err)
 		return time.Now(), err
 	}
 

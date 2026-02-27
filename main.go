@@ -36,13 +36,19 @@ func main() {
 	node1Addr := fmt.Sprintf("%s:%d", ip.String(), port)
 	node2.Join([]string{node1Addr})
 
+	joined := false
+
 	deadline := time.Now().Add(2 * time.Minute)
 	for time.Now().Before(deadline) {
 		if len(node1.Members()) == 2 {
 			fmt.Println("node2 joined the cluster!")
+			joined = true
+			break
 		}
 		time.Sleep(3 * time.Second)
 	}
 
-	log.Fatalf("timeout couldn't join the cluster!")
+	if !joined {
+		log.Fatalf("timeout couldn't join the cluster!")
+	}
 }
