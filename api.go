@@ -2,7 +2,6 @@ package main
 
 import (
 	"fmt"
-	"sync/atomic"
 )
 
 func (m *MyMembers) Join(existing []string) (int, error) {
@@ -70,4 +69,18 @@ func (m *MyMembers) Members() []*Node {
 	}
 
 	return result
+}
+
+func (m *MyMembers) LocalNode() *Node {
+	m.nodeLock.RLock()
+	defer m.nodeLock.RUnlock()
+
+	ns, ok := m.memberList[m.config.Name]
+	if !ok {
+		return nil
+	}
+
+	n := ns.Node
+
+	return &n
 }

@@ -40,6 +40,17 @@ func shuffledNodes(nodes []*nodeState) {
 
 // suspicionTimeout calculate how long to suspect before declaring dead
 func suspicionTimeout(suspicionMult int, n int, interval time.Duration) time.Duration {
+	/*
+		How long does gossip take to reach everyone?
+		ans: log10(n) rounds to reach all nodes
+
+		SuspicionMult : how long a node stays in "suspect" before being declared dead
+		ProbeInterval
+
+		timeout = SuspicionMult * log10(number of nodes) * ProbeInterval
+	
+	*/
+
 	nodeCount := n
 	if nodeCount < 1 {
 		nodeCount = 1
