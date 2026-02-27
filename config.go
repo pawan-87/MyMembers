@@ -58,7 +58,7 @@ func DefaultConfig() *Config {
 		GossipInterval: 200 * time.Millisecond,
 		GossipNodes:    3,
 
-		UDPBufferSize: 1400,
+		UDPBufferSize: 1400, // safe max that avoids fragmentation on most networks
 		Logger:        nil,
 	}
 
