@@ -2,6 +2,12 @@
 
 An implementation of the [SWIM protocol](https://www.cs.cornell.edu/projects/Quicksilver/public_pdfs/SWIM.pdf) in Go. This is a learning project and is not designed for production use.
 
+
+## Architecture
+
+<img width="854" height="720" alt="Screenshot 2026-02-27 at 11 25 40 PM" src="https://github.com/user-attachments/assets/3694590c-a4fa-44f0-b3b4-87770faa30fa" />
+
+
 ## Example
 
 ```go
@@ -32,10 +38,6 @@ fmt.Println(len(node2.Members())) // 2
 node2.Leave()
 node2.Shutdown()
 ```
-
-## Architecture
-
-<!-- TODO: Add architecture diagram -->
 
 ## Learning Resources
 
