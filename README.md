@@ -43,7 +43,7 @@ node2.Shutdown()
 
 - **SWIM Paper:** [SWIM: Scalable Weakly-consistent Infection-style Process Group Membership Protocol](https://www.cs.cornell.edu/projects/Quicksilver/public_pdfs/SWIM.pdf)
 - **memberlist** (HashiCorp): https://github.com/hashicorp/memberlist
-- **ringpop-go** (Uber): https://github.com/uber/ringpop-go
+- **ringpop-go** (Uber): https://github.com/uber/ringpop-go/tree/master/swim
 
 ## Contact
 
