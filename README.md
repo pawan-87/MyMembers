@@ -1,4 +1,4 @@
-# MyMembers
+# MyMembers (Scalable Weakly-consistent Infection-style Process Group Membership Protocol Implementation)
 
 An implementation of the [SWIM protocol](https://www.cs.cornell.edu/projects/Quicksilver/public_pdfs/SWIM.pdf) in Go. This is a learning project and is not designed for production use.
 
