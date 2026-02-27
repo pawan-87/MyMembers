@@ -104,7 +104,7 @@ func (t *NetTransport) udpListen() {
 		buf := make([]byte, 65536) // 65536 max UDP datagram size
 		n, addr, err := t.conn.ReadFromUDP(buf)
 		ts := time.Now()
-		t.logger.Printf("[DBG] transport: Received UDP packet")
+		t.logger.Printf("[DBG] transport: UDP Packet received!")
 
 		if err != nil {
 			if atomic.LoadInt32(&t.shutdown) == 1 {

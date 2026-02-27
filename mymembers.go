@@ -2,11 +2,9 @@ package main
 
 import (
 	"encoding/json"
-	"io"
 	"log"
 	"net"
 	"os"
-	"strconv"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -121,64 +119,6 @@ func (m *MyMembers) Shutdown() error {
 	return nil
 }
 
-// packetListen it reads packets from the transport and dispatches them to correct handler
-func (m *MyMembers) packetListen() {
-	m.logger.Println("[DEBUG] packetListen: started packetListener")
-
-	for {
-		select {
-		case pkt := <-m.transport.PacketCh():
-			// handle packet
-			if len(pkt.Buf) < 1 {
-				continue
-			}
-
-			// extract the messageType & payload from the packet
-			msgType := messageType(pkt.Buf[0])
-			payload := pkt.Buf[1:]
-
-			switch msgType {
-			case pingMsg:
-				m.handlePingMsg(payload, pkt.From)
-
-			case ackRespMsg:
-				m.handleAckRespMsg(payload, pkt.From, pkt.Timestamp)
-
-			case indirectPingMsg:
-				m.handleIndirectPingMsg(payload, pkt.From)
-
-			case suspectMsg:
-				m.handleSuspectMsg(payload, pkt.From)
-
-			case aliveMsg:
-				m.handleAliveMsg(payload, pkt.From)
-
-			case deadMsg:
-				m.handleDeadMsg(payload, pkt.From)
-
-			default:
-				m.logger.Printf("[WARN] unknow message type: %d", msgType)
-			}
-
-		case <-m.shutdownCh:
-			return
-		}
-	}
-}
-
-func (m *MyMembers) streamListen() {
-	m.logger.Println("[DEBUG] streamListen: started streamListener")
-
-	for {
-		select {
-		case conn := <-m.transport.StreamCh():
-			go m.handleStream(conn)
-		case <-m.shutdownCh:
-			return
-		}
-	}
-}
-
 // schedule runs SWIM based periodic background tasks
 func (m *MyMembers) schedule() {
 	m.logger.Println("[DEBUG] schedule: scheduler started")
@@ -205,142 +145,6 @@ func (m *MyMembers) schedule() {
 			return
 		}
 	}
-}
-
-func (m *MyMembers) probe() {
-	m.nodeLock.RLock()
-	numNodes := len(m.nodes)
-	if numNodes <= 1 {
-		m.nodeLock.RUnlock()
-		return
-	}
-
-	// calculate the probe index
-	if m.probeIndex >= numNodes {
-		m.nodeLock.RUnlock()
-		m.nodeLock.Lock()
-		shuffledNodes(m.nodes)
-		m.probeIndex = 0
-		m.nodeLock.Unlock()
-		m.nodeLock.RLock()
-		numNodes = len(m.nodes)
-	}
-
-	var target *nodeState
-	for i := 0; i < numNodes; i++ {
-		idx := (m.probeIndex + i) % numNodes
-		ns := m.nodes[idx]
-		if ns.Name == m.config.Name || ns.DeadOrLeft() {
-			continue
-		}
-		target = ns
-		m.probeIndex = idx + 1
-		break
-	}
-
-	m.nodeLock.RUnlock()
-
-	if target == nil {
-		return
-	}
-
-	m.probeNode(target)
-}
-
-func (m *MyMembers) probeNode(target *nodeState) {
-	seqNo := m.nextSeqNo()
-	ackCh := make(chan ackMessage, m.config.IndirectChecks+1)
-
-	m.setProbeChannels(seqNo, ackCh, m.config.ProbeInterval)
-
-	advertiseIP, advertisePort, _ := m.transport.GetAdvertiseAddr()
-
-	p := ping{
-		SeqNo:      seqNo,
-		TargetNode: target.Name,
-		SourceAddr: advertiseIP,
-		SourcePort: uint16(advertisePort),
-		SourceNode: m.config.Name,
-		Broadcasts: m.getBroadcasts(0, m.config.UDPBufferSize),
-	}
-
-	err := m.encodeAndSendMsg(target.Address(), pingMsg, &p)
-	if err != nil {
-		m.logger.Printf("[ERR] couldn't send the ping message")
-		return
-	}
-
-	probeStart := time.Now()
-
-	select {
-	case resp := <-ackCh:
-		if resp.Complete {
-			return
-		}
-	case <-time.After(m.config.ProbeTimeout):
-		// Timeout - proceed to indirect ping
-
-	case <-m.shutdownCh:
-		return
-	}
-
-	// Indirect ping Starts
-
-	// pick k random peers
-	m.nodeLock.RLock()
-	peers := kRandomNodes(m.config.IndirectChecks, m.nodes, func(ns *nodeState) bool {
-		return ns.Name == m.config.Name || ns.Name == target.Name || ns.DeadOrLeft()
-	})
-	m.nodeLock.RUnlock()
-
-	// send indirect ping requests to each peer
-	for _, peer := range peers {
-		req := indirectPingReq{
-			SeqNo:          seqNo,
-			TargetNode:     target.Name,
-			TargetNodeIP:   target.Addr,
-			TargetNodePort: target.Port,
-			SourceAddr:     advertiseIP,
-			SourcePort:     uint16(advertisePort),
-			SourceNode:     m.config.Name,
-		}
-		err := m.encodeAndSendMsg(peer.Address(), indirectPingMsg, &req)
-		if err != nil {
-			m.logger.Printf("[ERR] couldn't send the ping message")
-			return
-		}
-	}
-
-	// wait for the remaining time
-	elapsed := time.Since(probeStart)
-	remaining := m.config.ProbeInterval - elapsed
-	if remaining > 0 {
-		select {
-		case resp := <-ackCh:
-			if resp.Complete {
-				return
-			}
-
-		case <-time.After(remaining):
-
-		case <-m.shutdownCh:
-			return
-
-		}
-	}
-
-	// If no ack then mark the target node suspect
-	m.logger.Printf("[INFO] probe: no ack from %s, suspecting", target.Name)
-
-	m.nodeLock.RLock()
-	s := suspect{
-		Incarnation: target.Incarnation,
-		Node:        target.Name,
-		From:        m.config.Name,
-	}
-	m.nodeLock.RUnlock()
-	
-	m.suspectNode(&s)
 }
 
 func (m *MyMembers) gossip() {
@@ -418,44 +222,6 @@ func (m *MyMembers) encodeAndSendMsg(addr string, msgType messageType, msg inter
 	return nil
 }
 
-type ackMessage struct {
-	Complete  bool
-	Payload   []byte
-	Timestamp time.Time
-}
-
-// =================================== Probing ===================================
-func (m *MyMembers) setProbeChannels(seqNo uint32, ackCh chan ackMessage, timeout time.Duration) {
-
-	ackFun := func(payload []byte, timestamp time.Time) {
-		select {
-		case ackCh <- ackMessage{Complete: true, Payload: payload, Timestamp: timestamp}:
-
-		default:
-
-		}
-	}
-
-	ah := &ackHandler{ackFn: ackFun, nackFn: nil, timer: nil}
-
-	m.ackLock.Lock()
-	m.ackHandlers[seqNo] = ah
-	m.ackLock.Unlock()
-
-	ah.timer = time.AfterFunc(timeout, func() {
-		m.ackLock.Lock()
-		delete(m.ackHandlers, seqNo)
-		m.ackLock.Unlock()
-
-		select {
-		case ackCh <- ackMessage{Complete: false}:
-
-		default:
-
-		}
-	})
-}
-
 func (m *MyMembers) invokeAckHandler(ack ackResp, timestamp time.Time) {
 	m.ackLock.Lock()
 	ah, ok := m.ackHandlers[ack.SeqNo]
@@ -468,116 +234,6 @@ func (m *MyMembers) invokeAckHandler(ack ackResp, timestamp time.Time) {
 	}
 }
 
-// =================================== Message Handlers ===================================
-func (m *MyMembers) handlePingMsg(payload []byte, from net.Addr) {
-	var p ping
-	decode(payload, &p)
-
-	// the ping message may contains piggyback messages
-	// broadcasts piggyback message to other nodes
-	m.handleBroadcasts(p.Broadcasts)
-
-	ackMsg := ackResp{
-		SeqNo:      p.SeqNo,
-		Broadcasts: m.getBroadcasts(0, m.config.UDPBufferSize),
-	}
-
-	var replyAddr string
-	if len(p.SourceAddr) > 0 {
-		ip := net.IP(p.SourceAddr)
-		replyAddr = net.JoinHostPort(ip.String(), strconv.Itoa(int(p.SourcePort)))
-	} else {
-		replyAddr = from.String()
-	}
-
-	err := m.encodeAndSendMsg(replyAddr, ackRespMsg, ackMsg)
-	if err != nil {
-		m.logger.Printf("[ERR] handlePing: couldn't send the ping message")
-	}
-}
-
-func (m *MyMembers) handleAckRespMsg(payload []byte, from net.Addr, timestamp time.Time) {
-	var ack ackResp
-	decode(payload, &ack)
-	m.handleBroadcasts(ack.Broadcasts)
-	m.invokeAckHandler(ack, timestamp)
-}
-
-func (m *MyMembers) handleIndirectPingMsg(payload []byte, from net.Addr) {
-	var req indirectPingReq
-	decode(payload, &req)
-
-	ip := net.IP(req.TargetNodeIP)
-	targetAddr := net.JoinHostPort(ip.String(), strconv.Itoa(int(req.TargetNodePort)))
-
-	ping := &ping{
-		SeqNo:      req.SeqNo,
-		TargetNode: req.TargetNode,
-		SourceAddr: req.SourceAddr,
-		SourcePort: req.SourcePort,
-		SourceNode: req.SourceNode,
-	}
-
-	err := m.encodeAndSendMsg(targetAddr, pingMsg, &ping)
-	if err != nil {
-		m.logger.Printf("[ERR] handleIndirectPingMsg: couldn't send the indirect ping message")
-	}
-}
-
-func (m *MyMembers) handleSuspectMsg(payload []byte, from net.Addr) {
-	var s suspect
-	decode(payload, &s)
-	m.suspectNode(&s)
-}
-
-func (m *MyMembers) handleAliveMsg(payload []byte, from net.Addr) {
-	var a alive
-	decode(payload, &a)
-	m.aliveNode(&a)
-}
-
-func (m *MyMembers) handleDeadMsg(payload []byte, from net.Addr) {
-	var d dead
-	decode(payload, &d)
-	m.deadNode(&d)
-}
-
-func (m *MyMembers) handleBroadcasts(broadcasts [][]byte) {
-
-	if len(broadcasts) == 0 {
-		return
-	}
-
-	for _, msg := range broadcasts {
-		if len(msg) < 1 {
-			continue
-		}
-
-		msgType := messageType(msg[0])
-		buff := msg[1:]
-
-		switch msgType {
-		case suspectMsg:
-			var s suspect
-			decode(buff, &s)
-			m.suspectNode(&s)
-
-		case aliveMsg:
-			var a alive
-			decode(buff, &a)
-			m.aliveNode(&a)
-
-		case deadMsg:
-			var d dead
-			decode(buff, &d)
-			m.deadNode(&d)
-
-		default:
-			m.logger.Printf("[WARN] unkown piggybacked message type: %d", msgType)
-		}
-	}
-}
-
 // getBroadcasts
 func (m *MyMembers) getBroadcasts(overhead int, limit int) [][]byte {
 	if m.broadcasts == nil {
@@ -587,7 +243,6 @@ func (m *MyMembers) getBroadcasts(overhead int, limit int) [][]byte {
 }
 
 // =================================== Update TargetNode States ===================================
-
 func (m *MyMembers) aliveNode(a *alive) {
 	m.nodeLock.Lock()
 	defer m.nodeLock.Unlock()
@@ -773,23 +428,4 @@ func (m *MyMembers) refute(me *nodeState, accusedInc uint32) {
 
 	encoded, _ := encode(aliveMsg, &a)
 	m.broadcasts.QueueBroadcast(m.config.Name, encoded)
-}
-
-func (m *MyMembers) handleStream(conn net.Conn) {
-	conn.SetDeadline(time.Now().Add(m.config.TCPTimeout))
-	defer conn.Close()
-
-	buff := make([]byte, 1)
-	_, err := io.ReadFull(conn, buff)
-	if err != nil {
-		m.logger.Printf("[ERR] stream: failed to read message type: %v", err)
-		return
-	}
-
-	switch messageType(buff[0]) {
-	case pushPullMsg:
-		m.handlePushPull(conn)
-	default:
-		m.logger.Printf("[ERR] stream: unknown message type: %d", buff[0])
-	}
 }
