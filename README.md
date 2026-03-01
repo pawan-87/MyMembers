@@ -5,7 +5,7 @@ An implementation of the [SWIM protocol](https://www.cs.cornell.edu/projects/Qui
 > **Note:** This is a learning project and is not designed for production use.
 
 
-## Single Node Architecture
+## Node Architecture
 
 <img width="854" height="720" alt="Screenshot 2026-02-27 at 11 25 40 PM" src="https://github.com/user-attachments/assets/3694590c-a4fa-44f0-b3b4-87770faa30fa" />
 
